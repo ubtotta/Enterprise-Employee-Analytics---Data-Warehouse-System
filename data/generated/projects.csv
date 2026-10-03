@@ -1,0 +1,11 @@
+project_id,project_name,description,start_date,end_date,status
+P0001,Customer Analytics Platform,Enterprise initiative: Customer Analytics Platform,2024-01-01,2024-11-22,Completed
+P0002,HR Modernization,Enterprise initiative: HR Modernization,2024-02-15,2025-04-20,Completed
+P0003,Cloud Migration,Enterprise initiative: Cloud Migration,2024-03-31,2025-03-12,Completed
+P0004,Sales Intelligence,Enterprise initiative: Sales Intelligence,2024-05-15,2025-01-31,Planned
+P0005,Data Quality Program,Enterprise initiative: Data Quality Program,2024-06-29,2025-04-20,Active
+P0006,Employee Experience,Enterprise initiative: Employee Experience,2024-08-13,2025-12-14,Completed
+P0007,Finance Automation,Enterprise initiative: Finance Automation,2024-09-27,2025-04-13,Active
+P0008,AI Recommendation Engine,Enterprise initiative: AI Recommendation Engine,2024-11-11,2026-02-28,Active
+P0009,Mobile Platform,Enterprise initiative: Mobile Platform,2024-12-26,2025-12-12,Active
+P0010,Enterprise Reporting,Enterprise initiative: Enterprise Reporting,2025-02-09,2025-10-22,Planned
