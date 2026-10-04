@@ -1,0 +1,39 @@
+# Visual theme for the Streamlit app (Person 3: application layer).
+# Light and dark are both defined, so the viewer can switch with the toggle in the top bar.
+# Colours are checked for WCAG AA contrast; see docs/UI_UX_GUIDELINES.md.
+
+[client]
+toolbarMode = "minimal"
+
+[theme]
+font = "'Geist':https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap"
+headingFont = "Geist"
+codeFont = "'Geist Mono':https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap"
+baseFontSize = 15
+baseRadius = "14px"
+buttonRadius = "full"
+showWidgetBorder = true
+showSidebarBorder = false
+headingFontWeights = [650, 600, 600, 600, 600, 600]
+
+[theme.light]
+primaryColor = "#4a6a1c"
+backgroundColor = "#e8ebe5"
+secondaryBackgroundColor = "#f3f4f1"
+textColor = "#12160f"
+borderColor = "#d6d9d2"
+greenColor = "#3f7d20"
+redColor = "#c43d3d"
+orangeColor = "#c77700"
+dataframeHeaderBackgroundColor = "#f1f2ee"
+
+[theme.dark]
+primaryColor = "#a3cd68"
+backgroundColor = "#0d100e"
+secondaryBackgroundColor = "#1a1f1b"
+textColor = "#ecf0ea"
+borderColor = "#2a2e2a"
+greenColor = "#8cc464"
+redColor = "#e66767"
+orangeColor = "#e0a030"
+dataframeHeaderBackgroundColor = "#161916"
