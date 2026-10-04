@@ -14,6 +14,7 @@ import streamlit as st
 from src.entities import Employee
 from src.managers import EmployeeManager
 from ui import data
+from views.employee_lookup import render_lookup
 from ui.components import Col, callout, card_head, data_table, page_header, pager, paginate, reset_page
 
 
@@ -253,10 +254,12 @@ def render():
         return
 
     st.write("")
-    tab1, tab2, tab3 = st.tabs(["Onboard", "Change department", "Directory"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Onboard", "Change department", "Directory", "Look up"])
     with tab1:
         _onboard(manager, departments)
     with tab2:
         _department_change(manager, departments)
     with tab3:
         _directory(departments)
+    with tab4:
+        render_lookup()
