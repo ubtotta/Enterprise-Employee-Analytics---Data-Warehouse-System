@@ -240,11 +240,27 @@ def _form(body) -> None:
                 _message(f"Too many attempts. Please wait {wait} seconds and try again." if wait
                          else "Username or password is incorrect.", shake=True)
             else:
-                # Morph the card, store the cookie, then load the dashboard as a fresh page.
-                body.html(f'<div class="ea-login-ok"><div class="av">{escape(user.initials)}</div>'
-                          f"<b>Welcome, {escape(user.first_name)}</b><span>Opening your dashboard</span></div>"
-                          + auth.enter_script(user, remember), unsafe_allow_javascript=True)
-                st.stop()
+              # ---------------------------------------------------------
+              # Store authenticated user in Streamlit Session State
+              # ---------------------------------------------------------
+              st.session_state["_auth_username"] = user.username
+              st.session_state["_auth_signed_in_at"] = int(datetime.now().timestamp())
+
+              # Keep the signed cookie for browser-session restoration.
+              # The current Streamlit session no longer depends on
+              # JavaScript window.location.replace().
+              body.html(
+                  f'<div class="ea-login-ok">'
+                  f'<div class="av">{escape(user.initials)}</div>'
+                  f"<b>Welcome, {escape(user.first_name)}</b>"
+                  f"<span>Opening your dashboard</span>"
+                  f"</div>",
+                  unsafe_allow_javascript=False
+              )
+
+              # Let Streamlit preserve the current session and
+              # execute the authenticated navigation.
+              st.rerun()
 
     st.html('<p class="ea-login-foot">Trouble signing in? Contact your administrator.</p>')
 

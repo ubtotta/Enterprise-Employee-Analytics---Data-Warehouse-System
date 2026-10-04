@@ -105,24 +105,46 @@ def read_token(token: str | None, now: float | None = None, secret: bytes = _SEC
 # Session helpers
 # ---------------------------------------------------------------------------
 def current_user() -> User | None:
-    """Signed-in user, read from the signed cookie the browser sent when the page loaded.
+    """Return the authenticated user for the current Streamlit session.
 
-    Sign-in and sign-out always end with a fresh page load (see the scripts below),
-    so one page only ever shows one screen: never the old login card mixed with the
-    dashboard or the other way round.
+    Session State is the primary authentication state. The signed cookie
+    remains as a fallback so a fresh browser session can restore login.
     """
+
     if st.session_state.get("_auth_leaving"):
         return None
+
+    # ---------------------------------------------------------
+    # Primary authentication state
+    # ---------------------------------------------------------
+    username = st.session_state.get("_auth_username")
+
+    if username:
+        user = USERS.get(username)
+
+        if user:
+            return user
+
+    # ---------------------------------------------------------
+    # Fallback: signed browser cookie
+    # ---------------------------------------------------------
     try:
         token = st.context.cookies.get(COOKIE)
     except Exception:
         token = None
+
     user = read_token(token)
+
     if user:
-        try:  # the token carries its expiry; sign-in time = expiry - session length
-            st.session_state["_auth_signed_in_at"] = int(token.split(".")[1]) - SESSION_HOURS * 3600
+        st.session_state["_auth_username"] = user.username
+
+        try:
+            st.session_state["_auth_signed_in_at"] = (
+                int(token.split(".")[1]) - SESSION_HOURS * 3600
+            )
         except (ValueError, IndexError):
             pass
+
     return user
 
 
