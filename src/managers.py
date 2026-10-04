@@ -182,9 +182,10 @@ class EmployeeManager(BaseManager):
             if int(employee["department_id"]) == int(new_department_id):
                 return "Employee is already in that department."
 
-            cur.execute("UPDATE Employees SET department_id=%s WHERE employee_id=%s", (new_department_id, employee_id))
-            conn_oltp.commit()
-
+            # Check the warehouse side first and run every statement before
+            # committing anything. OLTP and the warehouse are separate
+            # databases, so the two commits cannot be atomic; committing OLTP
+            # right before the warehouse keeps the window for a mismatch small.
             dw = conn_dw.cursor(dictionary=True)
             dw.execute("""SELECT employee_sk, department_sk FROM Dim_Employee
                          WHERE employee_id=%s AND is_current=TRUE ORDER BY employee_sk DESC LIMIT 1""", (employee_id,))
@@ -194,20 +195,21 @@ class EmployeeManager(BaseManager):
             if not new_dept:
                 raise ValueError("Target department is not present in the warehouse. Run ETL first.")
 
-            if current:
-                dw.execute("""UPDATE Dim_Employee SET end_date=%s, is_current=FALSE
-                              WHERE employee_sk=%s AND is_current=TRUE""", (effective_date, current["employee_sk"]))
-                start_date = effective_date
-                dw.execute("""INSERT INTO Dim_Employee
-                    (employee_id, first_name, last_name, email, gender, age, department_sk, role, salary, hire_date,
-                     start_date, end_date, is_current)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'9999-12-31',TRUE)""",
-                    (employee["employee_id"], employee["first_name"], employee["last_name"], employee["email"],
-                     employee["gender"], employee["age"], new_dept["department_sk"], employee["role"],
-                     employee["salary"], employee["hire_date"], start_date))
-                conn_dw.commit()
-            else:
+            if not current:
                 raise ValueError("No current warehouse employee version exists. Run ETL first.")
+
+            cur.execute("UPDATE Employees SET department_id=%s WHERE employee_id=%s", (new_department_id, employee_id))
+            dw.execute("""UPDATE Dim_Employee SET end_date=%s, is_current=FALSE
+                          WHERE employee_sk=%s AND is_current=TRUE""", (effective_date, current["employee_sk"]))
+            dw.execute("""INSERT INTO Dim_Employee
+                (employee_id, first_name, last_name, email, gender, age, department_sk, role, salary, hire_date,
+                 start_date, end_date, is_current)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'9999-12-31',TRUE)""",
+                (employee["employee_id"], employee["first_name"], employee["last_name"], employee["email"],
+                 employee["gender"], employee["age"], new_dept["department_sk"], employee["role"],
+                 employee["salary"], employee["hire_date"], effective_date))
+            conn_oltp.commit()
+            conn_dw.commit()
             return "Department updated in OLTP and a new SCD Type 2 warehouse version was created."
         except Exception:
             conn_oltp.rollback()
@@ -436,11 +438,11 @@ class AnalyticsManager(BaseManager):
 
                                     /* Salary component: 0-15 */
                                     CASE
-                                        WHEN salary < 300000
+                                        WHEN salary < 900000
                                             THEN 15
-                                        WHEN salary < 400000
+                                        WHEN salary < 1500000
                                             THEN 10
-                                        WHEN salary < 500000
+                                        WHEN salary < 2100000
                                             THEN 5
                                         ELSE 0
                                     END

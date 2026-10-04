@@ -4,9 +4,26 @@ from __future__ import annotations
 from pathlib import Path
 from datetime import date
 import pandas as pd
+from mysql.connector import errors as mysql_errors
 
 from config import settings
 from src.db_manager import DatabaseConnection
+
+
+def _call_or_run(cur, procedure: str, args: tuple, fallback_sql: str, fallback_args: tuple):
+    """Run a warehouse stored procedure; use the equivalent SQL if it is not installed.
+
+    The procedures live in sql/05_stored_procedures.sql. Error 1305 means
+    "procedure does not exist", which happens if that file was not run.
+    """
+    try:
+        cur.callproc(procedure, args)
+        for _ in cur.stored_results():
+            pass
+    except mysql_errors.ProgrammingError as exc:
+        if exc.errno != 1305:
+            raise
+        cur.execute(fallback_sql, fallback_args)
 
 
 class EmployeeWarehouseETL:
@@ -52,21 +69,21 @@ class EmployeeWarehouseETL:
             departments = oltp_cur.fetchall()
 
             for dept in departments:
-                dw_cur.execute("""
+                _call_or_run(
+                    dw_cur,
+                    "sp_upsert_department",
+                    (dept["department_id"], dept["department_name"], dept["location"], dept["budget"]),
+                    """
                     INSERT INTO Dim_Department
                         (department_id, department_name, location, budget)
-                    VALUES
-                        (%s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s)
                     ON DUPLICATE KEY UPDATE
                         department_name = VALUES(department_name),
                         location = VALUES(location),
                         budget = VALUES(budget)
-                """, (
-                    dept["department_id"],
-                    dept["department_name"],
-                    dept["location"],
-                    dept["budget"],
-                ))
+                    """,
+                    (dept["department_id"], dept["department_name"], dept["location"], dept["budget"]),
+                )
 
             # ---------------------------------------------------------
             # 2. Sync Projects
@@ -84,23 +101,24 @@ class EmployeeWarehouseETL:
             projects = oltp_cur.fetchall()
 
             for project in projects:
-                dw_cur.execute("""
+                _call_or_run(
+                    dw_cur,
+                    "sp_load_project",
+                    (project["project_id"], project["project_name"], project["status"],
+                     project["start_date"], project["end_date"]),
+                    """
                     INSERT INTO Dim_Project
                         (project_id, project_name, status, start_date, end_date)
-                    VALUES
-                        (%s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s)
                     ON DUPLICATE KEY UPDATE
                         project_name = VALUES(project_name),
                         status = VALUES(status),
                         start_date = VALUES(start_date),
                         end_date = VALUES(end_date)
-                """, (
-                    project["project_id"],
-                    project["project_name"],
-                    project["status"],
-                    project["start_date"],
-                    project["end_date"],
-                ))
+                    """,
+                    (project["project_id"], project["project_name"], project["status"],
+                     project["start_date"], project["end_date"]),
+                )
 
             # ---------------------------------------------------------
             # 3. Make sure all review dates exist in Dim_Date
