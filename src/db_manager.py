@@ -27,14 +27,25 @@ class DatabaseConnection:
         return cls._instance
 
     def connect(self, database: str | None = None):
-        return mysql.connector.connect(
-            host=settings.host,
-            port=settings.port,
-            user=settings.user,
-            password=settings.password,
-            database=database,
-            autocommit=False,
-        )
+        connection_args = {
+            "host": settings.host,
+            "port": settings.port,
+            "user": settings.user,
+            "password": settings.password,
+            "database": database,
+            "autocommit": False,
+        }
+
+        if settings.ssl_ca:
+            connection_args.update(
+                {
+                    "ssl_ca": settings.ssl_ca,
+                    "ssl_verify_cert": settings.ssl_verify_cert,
+                    "ssl_verify_identity": settings.ssl_verify_identity,
+                }
+            )
+
+        return mysql.connector.connect(**connection_args)
 
     def test_connection(self, database: str | None = None) -> tuple[bool, str]:
         conn = None
