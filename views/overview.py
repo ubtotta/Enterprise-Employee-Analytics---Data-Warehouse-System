@@ -18,14 +18,16 @@ from ui.components import (Col, callout, card_head, chip, count_html, data_table
                            leader_list, micro_bars, micro_spark, micro_split, mix_bar, pager, paginate,
                            reset_page, section, skeleton)
 from ui.theme import PLOTLY_CONFIG, style_figure, tokens
+from ui.errors import log_error, show_unavailable
 
 
 def _safe(fn):
-    """Same behaviour as the old manager_error helper: show the error, return None."""
+    """Load one section. On failure: log the details, show a short note, return None."""
     try:
         return fn()
     except Exception as exc:
-        st.error(f"Could not load this section: {exc}")
+        log_error(exc, "load an overview section")
+        st.caption("This section couldn't load right now. Please try again in a moment.")
         return None
 
 
@@ -216,11 +218,16 @@ def render():
     kpi_slot = st.empty()
     kpi_slot.html('<div class="ea-kpis">' + "".join(skeleton(176, 24) for _ in range(4)) + "</div>")
 
-    kpi = _safe(data.kpis)
+    try:
+        kpi = data.kpis()
+    except Exception as exc:
+        kpi_slot.empty()
+        show_unavailable(exc, "the overview", "overview")
+        return
     if not kpi:
         kpi_slot.empty()
-        callout("<b>No warehouse data yet.</b> Load the OLTP data with <code>scripts/load_oltp.py</code> "
-                "and run <code>scripts/run_etl.py</code>, then reload this page.", "database")
+        callout("<b>Nothing to show yet.</b> Analytics appear here once employee and review data "
+                "has been loaded.", "insights")
         return
 
     trend = _safe(data.yearly_trend)

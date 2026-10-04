@@ -15,6 +15,9 @@ from src.entities import Employee
 from src.managers import EmployeeManager
 from ui import data
 from views.employee_lookup import render_lookup
+from src.employee_lookup import EmployeeLookup
+from ui import validation as v
+from ui.errors import show_error, show_unavailable
 from ui.components import Col, callout, card_head, data_table, page_header, pager, paginate, reset_page
 
 
@@ -84,11 +87,11 @@ def validate_employee_input(first, last, email, age, role, salary, hire_date):
     return None
 
 
-def _manager_error(fn):
+def _manager_error(fn, action: str = "complete this action"):
     try:
         return fn()
     except Exception as exc:
-        st.error(f"Operation failed: {exc}", icon=":material/error:")
+        show_error(exc, action)  # plain message on screen, full details in the server log
         return None
 
 
@@ -105,19 +108,19 @@ def _onboard(manager: EmployeeManager, departments):
             with personal:
                 st.html('<p class="ea-group"><span class="ea-icon">person</span>Personal details</p>')
                 n1, n2 = st.columns(2)
-                first = n1.text_input("First name", placeholder="Priya")
-                last = n2.text_input("Last name", placeholder="Sharma")
-                email = st.text_input("Work email", placeholder="priya.sharma@company.com")
+                first = n1.text_input("First name", placeholder="Priya", max_chars=v.MAX_NAME)
+                last = n2.text_input("Last name", placeholder="Sharma", max_chars=v.MAX_NAME)
+                email = st.text_input("Work email", placeholder="priya.sharma@company.com", max_chars=v.MAX_EMAIL)
                 g, a = st.columns([1.4, 1])
                 gender = g.selectbox("Gender", ["Male", "Female", "Other"])
-                age = a.number_input("Age", value=28, step=1, help="Between 18 and 70.")
+                age = a.number_input("Age", value=28, min_value=18, max_value=70, step=1, help="Between 18 and 70.")
             with job:
                 st.html('<p class="ea-group"><span class="ea-icon">work</span>Role and pay</p>')
                 dept = st.selectbox("Department", departments["department_name"].tolist())
-                role = st.text_input("Role", value="Software Engineer")
+                role = st.text_input("Role", value="Software Engineer", max_chars=v.MAX_ROLE)
                 s, h = st.columns(2)
-                salary = s.number_input("Annual salary", value=800000.0, step=25000.0,
-                                        help="Gross yearly salary, greater than 0.")
+                salary = s.number_input("Annual salary", value=800000.0, min_value=1.0, max_value=float(v.MAX_SALARY),
+                                        step=25000.0, help="Gross yearly salary, greater than 0.")
                 hire_date = h.date_input("Hire date", value=date.today(), max_value=date.today())
             st.write("")
             _, btn = st.columns([3, 1])
@@ -126,21 +129,37 @@ def _onboard(manager: EmployeeManager, departments):
 
         # Submission handling stays outside the form block (as before).
         if submitted:
-            validation_error = validate_employee_input(
-                first=first, last=last, email=email, age=age, role=role, salary=salary, hire_date=hire_date)
-            if validation_error:
-                st.error(validation_error, icon=":material/error:")
+            # Every problem is listed at once; the original rule set still runs as the final gate.
+            problems = (v.check_person_name(first, "First name") + v.check_person_name(last, "Last name")
+                        + v.check_email(email) + v.check_age(age) + v.check_role(role)
+                        + v.check_salary(salary) + v.check_hire_date(hire_date, age))
+            if not problems:
+                legacy = validate_employee_input(
+                    first=first, last=last, email=email, age=age, role=role, salary=salary, hire_date=hire_date)
+                if legacy:
+                    problems = [legacy]
+            if not problems:
+                try:
+                    if EmployeeLookup().email_exists(email.strip()):
+                        problems = ["An employee with this email already exists. Use a different email address."]
+                except Exception as exc:
+                    show_error(exc, "check the email address")
+                    problems = None
+            if problems:
+                st.error(v.bullet_list(problems), icon=":material/error:")
+            elif problems is None:
+                pass
             else:
                 dept_id = int(departments.loc[departments["department_name"] == dept, "department_id"].iloc[0])
                 employee = Employee(
                     employee_id=f"E{uuid.uuid4().hex[:8].upper()}",
-                    first_name=first.strip(),
-                    last_name=last.strip(),
+                    first_name=v.squeeze(first),
+                    last_name=v.squeeze(last),
                     email=email.strip(),
                     gender=gender,
                     age=int(age),
                     department_id=dept_id,
-                    role=role.strip(),
+                    role=v.squeeze(role),
                     salary=float(salary),
                     hire_date=hire_date,
                 )
@@ -152,7 +171,7 @@ def _onboard(manager: EmployeeManager, departments):
                                "Keep this ID for assignments and reviews.", icon=":material/check_circle:")
                     st.code(employee.employee_id, language=None)
                 except Exception as exc:
-                    st.error(f"Employee could not be onboarded: {exc}", icon=":material/error:")
+                    show_error(exc, "onboard this employee")
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +187,8 @@ def _confirm_change(manager: EmployeeManager, emp_id: str, dept_name: str, dept_
     if cancel.button("Cancel", use_container_width=True):
         st.rerun()
     if confirm.button("Apply change", type="primary", use_container_width=True):
-        msg = _manager_error(lambda: manager.update_department_with_scd2(emp_id, dept_id, effective))
+        msg = _manager_error(lambda: manager.update_department_with_scd2(emp_id, dept_id, effective),
+                             "change the department")
         if msg:
             data.clear()
             st.session_state["dept_change_msg"] = msg
@@ -180,24 +200,40 @@ def _department_change(manager: EmployeeManager, departments):
         card_head("Change department",
                   "Updates the employee and keeps their history in the warehouse.", icon_name="swap_horiz")
         c1, c2, c3 = st.columns([1.2, 1.2, 1])
-        emp_id = c1.text_input("Employee ID", placeholder="E000123",
+        emp_id = c1.text_input("Employee ID", placeholder="E000123", max_chars=9,
                                help="IDs look like E000123 or E1A2B3C4D.").strip().upper()
         new_dept = c2.selectbox("New department", departments["department_name"].tolist(), key="newdept")
         effective = c3.date_input("Effective date", value=date.today(), key="effective")
         st.write("")
         _, btn = st.columns([3, 1])
         if btn.button("Review change", type="primary", icon=":material/swap_horiz:", use_container_width=True):
-            if not emp_id:
-                st.error("Please enter an Employee ID.", icon=":material/error:")
-            else:
-                exists = _manager_error(lambda: manager.employee_exists(emp_id))
-                if exists is None:
-                    st.error("Unable to verify the Employee ID.", icon=":material/error:")
-                elif not exists:
-                    st.error(f"Employee ID '{emp_id}' was not found in the OLTP database.", icon=":material/error:")
-                else:
-                    dept_id = int(departments.loc[departments.department_name == new_dept, "department_id"].iloc[0])
-                    _confirm_change(manager, emp_id, new_dept, dept_id, effective)
+            problems = v.check_employee_id(emp_id) + v.check_not_future(effective, "Effective date")
+            dept_id = int(departments.loc[departments.department_name == new_dept, "department_id"].iloc[0])
+            if not problems:
+                try:
+                    lookup = EmployeeLookup()
+                    brief = lookup.employee_brief(emp_id)
+                    if brief is None:
+                        problems = [f"No employee found with ID {emp_id}."]
+                    else:
+                        if int(brief["department_id"]) == dept_id:
+                            problems.append(f"{emp_id} is already in {new_dept}.")
+                        if str(brief["status"]) != "Active":
+                            problems.append(f"{emp_id} is not an active employee, so their department can't change.")
+                        if effective < brief["hire_date"]:
+                            problems.append("Effective date can't be before the employee's hire date "
+                                            f"({brief['hire_date'].strftime('%d %b %Y')}).")
+                        current_start = lookup.current_version_start(emp_id)
+                        if current_start is not None and effective < current_start:
+                            problems.append("Effective date can't be before their current department started "
+                                            f"({current_start.strftime('%d %b %Y')}), or the history would overlap.")
+                except Exception as exc:
+                    show_error(exc, "check this employee")
+                    problems = None
+            if problems:
+                st.error(v.bullet_list(problems), icon=":material/error:")
+            elif problems is not None:
+                _confirm_change(manager, emp_id, new_dept, dept_id, effective)
 
         msg = st.session_state.pop("dept_change_msg", None)
         if msg:
@@ -211,7 +247,7 @@ def _department_change(manager: EmployeeManager, departments):
 def _directory(departments):
     with st.container(key="card-directory"):
         card_head("Directory", "First 500 employees by ID from the operational database", icon_name="badge")
-        employee_df = _manager_error(lambda: data.employees(500))
+        employee_df = _manager_error(lambda: data.employees(500), "load the directory")
         if employee_df is None:
             return
         f1, f2, f3 = st.columns([1.7, 1.6, 1.3], vertical_alignment="center")
@@ -248,9 +284,14 @@ def _directory(departments):
 def render():
     page_header("Employees", "Onboard people, move them between departments and look them up.")
     manager = EmployeeManager()
-    departments = _manager_error(data.departments)
-    if departments is None or departments.empty:
-        callout("<b>No departments found.</b> Create the database and run the data loader first.", "database")
+    try:
+        departments = data.departments()
+    except Exception as exc:
+        show_unavailable(exc, "this page", "employees")
+        return
+    if departments.empty:
+        callout("<b>No departments yet.</b> Departments need to be set up before employees can be added.",
+                "domain")
         return
 
     st.write("")

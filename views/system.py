@@ -7,6 +7,7 @@ import streamlit as st
 
 from config import settings
 from src.db_manager import DatabaseConnection
+from ui.errors import log_error
 from ui.components import card_head, chip, icon, page_header
 
 STEPS = [
@@ -43,7 +44,10 @@ def render():
                 "</tbody></table>"
             )
             if not ok:
-                st.error(message, icon=":material/error:")
+                # The driver message can include host and user names, so it only goes to the server log.
+                log_error(RuntimeError(message), "connect to the database")
+                st.error("The connection is unavailable right now. Please try again in a moment.",
+                         icon=":material/error:")
     with right:
         with st.container(key="card-team"):
             card_head("Team modules", "Each part was built on its own branch and merged by pull request", icon_name="groups")

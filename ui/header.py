@@ -12,6 +12,7 @@ import streamlit as st
 
 from src.etl import EmployeeWarehouseETL
 from ui import data
+from ui.errors import safe_text
 from ui.components import brand_html
 from ui.theme import theme_switch_html
 
@@ -70,7 +71,7 @@ def _refresh_warehouse(slot=None):
         st.session_state["_refresh_new"] = True
         data.clear()
     except Exception as exc:
-        st.session_state["warehouse_refresh_error"] = str(exc)
+        st.session_state["warehouse_refresh_error"] = safe_text(exc, "refresh the warehouse")
         st.session_state["warehouse_refresh_success"] = False
     st.rerun()
 

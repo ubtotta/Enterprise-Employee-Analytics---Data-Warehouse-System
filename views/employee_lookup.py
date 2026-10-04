@@ -20,6 +20,7 @@ import streamlit as st
 
 from src.employee_lookup import EmployeeLookup, looks_like_id
 from ui import data
+from ui.errors import show_error, show_unavailable
 from ui.components import avatar, callout, card_head, chip, icon, pager, reset_page, status_chip
 
 PAGE_SIZE = 15
@@ -170,7 +171,7 @@ def _list(lookup: EmployeeLookup, compact: bool) -> None:
             st.session_state[f"_page_{PAGE_KEY}"] = 1
             df, total = lookup.browse(term, dept_id, status, PAGE_SIZE, 0)
     except Exception as exc:
-        st.error(f"The employee list is unavailable right now: {exc}", icon=":material/error:")
+        show_unavailable(exc, "the employee list", "lookup")
         return
 
     # Typing an exact ID opens that person straight away (once per new search).
@@ -303,7 +304,7 @@ def _peek(lookup: EmployeeLookup, emp_id: str) -> None:
         try:
             p = lookup.profile(emp_id)
         except Exception as exc:
-            st.error(f"Could not load {emp_id}: {exc}", icon=":material/error:")
+            show_error(exc, "load this employee")
             return
         if p is None:
             callout(f"<b>{escape(emp_id)}</b> was not found in the operational database.", "person_off")

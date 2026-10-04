@@ -138,6 +138,32 @@ class EmployeeLookup:
 
         return self._read(settings.oltp_db, run)
 
+    # -- small read-only checks used by form validation ------------------------
+    def email_exists(self, email: str) -> bool:
+        df = self._read(settings.oltp_db, lambda c: self._frame(
+            c, "SELECT 1 AS x FROM Employees WHERE email = %s LIMIT 1", ((email or "").strip(),)))
+        return not df.empty
+
+    def employee_brief(self, employee_id: str) -> dict | None:
+        """Hire date and status for one employee, or None if the ID is unknown."""
+        df = self._read(settings.oltp_db, lambda c: self._frame(
+            c, "SELECT employee_id, hire_date, status, department_id FROM Employees WHERE employee_id = %s",
+            ((employee_id or "").strip().upper(),)))
+        return None if df.empty else df.iloc[0].to_dict()
+
+    def assignment_exists(self, employee_id: str, project_id: str) -> bool:
+        df = self._read(settings.oltp_db, lambda c: self._frame(
+            c, "SELECT 1 AS x FROM Assignments WHERE employee_id = %s AND project_id = %s LIMIT 1",
+            ((employee_id or "").strip().upper(), project_id)))
+        return not df.empty
+
+    def current_version_start(self, employee_id: str):
+        """Start date of the current warehouse version, or None."""
+        df = self._read(settings.olap_db, lambda c: self._frame(
+            c, """SELECT start_date FROM Dim_Employee WHERE employee_id = %s AND is_current = TRUE
+                  ORDER BY employee_sk DESC LIMIT 1""", ((employee_id or "").strip().upper(),)))
+        return None if df.empty else df.iloc[0]["start_date"]
+
     # -- one employee ----------------------------------------------------------
     def profile(self, employee_id: str) -> dict | None:
         """Everything about one employee: OLTP record, assignments, reviews and
