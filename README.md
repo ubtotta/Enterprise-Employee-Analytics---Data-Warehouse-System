@@ -1,362 +1,967 @@
 # Enterprise Employee Analytics & Data Warehouse System
 
-A complete team-ready implementation of the Greenfield mini-project from **Rising Stars - Greenfield Mini-Project - Version 2**.
+An end-to-end employee analytics platform that combines **Python OOP,
+synthetic data generation, MySQL OLTP, ETL, dimensional data
+warehousing, advanced SQL, SCD Type 2 history, and Streamlit
+analytics**.
 
-## Start here
+The system is designed to support both operational HR workflows and
+executive-level analytical reporting while preserving historical
+employee changes.
 
-If you are working as a team, read **TEAM_START_HERE.md** first. It gives the exact first-run order and the Person 1 / Person 2 / Person 3 ownership.
+------------------------------------------------------------------------
 
-## What this project implements
+## Table of Contents
 
-- Python + pandas + Faker data synthesis to create **100,000+ realistic employee-related records**.
-- Normalized MySQL **OLTP** database: Employees, Departments, Projects, Assignments, Reviews.
-- MySQL **OLAP Star Schema**: Fact_PerformanceReviews, Dim_Employee, Dim_Project, Dim_Date, Dim_Department.
-- Surrogate keys on dimensions.
-- **SCD Type 2** for employee department/role/salary history using `start_date`, `end_date`, `is_current`.
-- SQL DDL, DML, Stored Procedures, CTEs and Window Functions.
-- Python OOP backend with Singleton `DatabaseConnection`, entity classes and DAL/manager classes.
-- Streamlit application for employee onboarding, project creation, review submission, department changes and analytics.
-- Plotly dashboards for year-over-year trends, department rankings and project bottlenecks.
-- Git/GitHub-friendly modular structure and editable Draw.io diagrams.
+-   [Overview](#overview)
+-   [Key Objectives](#key-objectives)
+-   [Architecture](#architecture)
+-   [Technology Stack](#technology-stack)
+-   [Project Structure](#project-structure)
+-   [Data Pipeline](#data-pipeline)
+-   [Data Synthesis](#data-synthesis)
+-   [OLTP Database](#oltp-database)
+-   [Data Warehouse](#data-warehouse)
+-   [SCD Type 2](#scd-type-2)
+-   [ETL](#etl)
+-   [Advanced SQL](#advanced-sql)
+-   [Python Architecture](#python-architecture)
+-   [Streamlit Application](#streamlit-application)
+-   [Analytics Dashboard](#analytics-dashboard)
+-   [Cloud Deployment](#cloud-deployment)
+-   [Installation and Setup](#installation-and-setup)
+-   [Running the Project](#running-the-project)
+-   [Warehouse Refresh](#warehouse-refresh)
+-   [Security](#security)
+-   [Validation and Error Handling](#validation-and-error-handling)
+-   [Performance and Scalability](#performance-and-scalability)
+-   [Future Enhancements](#future-enhancements)
+-   [License](#license)
+
+------------------------------------------------------------------------
+
+## Overview
+
+The **Enterprise Employee Analytics & Data Warehouse System** provides a
+complete data engineering and analytics workflow for employee
+performance, project allocation, workforce management, and historical
+employee tracking.
+
+The platform separates **transactional workloads** from **analytical
+workloads**:
+
+``` text
+Synthetic Data
+      │
+      ▼
+Staging Database
+      │
+      ▼
+Normalized OLTP
+      │
+      │ ETL
+      ▼
+Star Schema Data Warehouse
+      │
+      ▼
+Streamlit Analytics Application
+      │
+      ▼
+Executive Insights
+```
+
+The application supports operational activities such as employee
+onboarding, project management, employee assignments, and performance
+reviews while using the data warehouse for analytical reporting.
+
+------------------------------------------------------------------------
+
+## Key Objectives
+
+The project focuses on the following capabilities:
+
+-   Generate and process **100,000+ employee records**.
+-   Create realistic related datasets for departments, projects,
+    assignments, and reviews.
+-   Maintain a normalized **OLTP database** for operational
+    transactions.
+-   Build a **Star Schema data warehouse** for analytics.
+-   Use **surrogate keys** for warehouse dimensions.
+-   Implement **SCD Type 2** for historical employee changes.
+-   Apply advanced SQL techniques including:
+    -   CTEs
+    -   Window Functions
+    -   Stored Procedures
+    -   Joins
+    -   Aggregations
+    -   Ranking
+-   Implement modular **Python OOP architecture**.
+-   Provide a Streamlit application for operational workflows and
+    analytics.
+-   Deploy the application to **Streamlit Community Cloud**.
+-   Host MySQL databases on **Aiven** with SSL-secured connectivity.
+
+------------------------------------------------------------------------
 
 ## Architecture
 
-```text
-IBM HR Dataset / Generated Seed
-             |
-             v
-   Python Data Synthesizer
-   pandas + Faker + history
-             |
-             v
-       CSV Data Files
-             |
-             v
-      MySQL OLTP Layer
- Employees | Departments | Projects | Assignments | Reviews
-             |
-             v
-       ETL / Transform
- CTEs + Window Functions + SCD2
-             |
-             v
-       MySQL OLAP Layer
-       Star Schema / DW
-             |
-             v
-       Streamlit App
- Data Entry + Analytics Dashboard
-             |
-             +--> OLTP writes
-             |
-             +--> OLAP analytical reads
+``` text
+                    ┌─────────────────────────┐
+                    │   Python Data Generator │
+                    │       + Faker           │
+                    └────────────┬────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────────────┐
+                    │      CSV Data Files      │
+                    │ Employees / Projects /  │
+                    │ Reviews / History / ... │
+                    └────────────┬────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────────────┐
+                    │   MySQL Staging Layer   │
+                    │    employee_staging     │
+                    └────────────┬────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────────────┐
+                    │     MySQL OLTP Layer    │
+                    │     employee_oltp       │
+                    │                         │
+                    │ Employees               │
+                    │ Departments             │
+                    │ Projects                │
+                    │ Assignments             │
+                    │ Reviews                 │
+                    └────────────┬────────────┘
+                                 │
+                              ETL / SCD2
+                                 │
+                                 ▼
+                    ┌─────────────────────────┐
+                    │    MySQL OLAP / DW      │
+                    │      employee_dw        │
+                    │                         │
+                    │ Dim_Employee             │
+                    │ Dim_Department           │
+                    │ Dim_Project              │
+                    │ Dim_Date                 │
+                    │ Fact_PerformanceReviews  │
+                    └────────────┬────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────────────┐
+                    │   Streamlit Application │
+                    │                         │
+                    │ Employee Management     │
+                    │ Projects                │
+                    │ Performance Reviews     │
+                    │ Executive Dashboard     │
+                    │ System Information      │
+                    └─────────────────────────┘
 ```
 
-## Project layout
+### Cloud Architecture
 
-```text
+``` text
+Streamlit Community Cloud
+          │
+          │ SSL / MySQL
+          ▼
+      Aiven MySQL
+          │
+     ┌────┴────┐
+     ▼         ▼
+   OLTP       OLAP
+ employee_oltp employee_dw
+```
+
+------------------------------------------------------------------------
+
+## Technology Stack
+
+  Layer               Technology
+  ------------------- -------------------------------------------
+  Programming         Python 3
+  Architecture        Object-Oriented Programming
+  Data Generation     Faker, pandas
+  Database            MySQL 8.x
+  Data Warehouse      MySQL Star Schema
+  ETL                 Python + SQL
+  SQL                 CTEs, Window Functions, Stored Procedures
+  Application         Streamlit
+  Visualization       Plotly
+  Cloud Database      Aiven MySQL
+  Cloud Application   Streamlit Community Cloud
+  Configuration       python-dotenv
+  Version Control     Git / GitHub
+
+------------------------------------------------------------------------
+
+## Project Structure
+
+``` text
 enterprise_employee_analytics/
+│
 ├── app.py
 ├── config.py
 ├── requirements.txt
 ├── .env.example
 ├── .gitignore
-├── README.md
-├── src/
-│   ├── db_manager.py
-│   ├── entities.py
-│   ├── managers.py
-│   ├── synthesizer.py
-│   └── etl.py
+├── Makefile
+├── setup_windows.bat
+│
+├── data/
+│   ├── README.md
+│   └── generated/
+│       ├── employees.csv
+│       ├── departments.csv
+│       ├── projects.csv
+│       ├── assignments.csv
+│       ├── reviews.csv
+│       └── employee_history.csv
+│
 ├── scripts/
 │   ├── generate_data.py
 │   ├── load_oltp.py
 │   ├── run_etl.py
 │   └── demo_setup.py
+│
+├── src/
+│   ├── entities.py
+│   ├── db_manager.py
+│   ├── etl.py
+│   └── managers.py
+│
 ├── sql/
 │   ├── 01_create_schemas.sql
-│   ├── 02_oltp_tables.sql
-│   ├── 03_olap_tables.sql
-│   ├── 04_stored_procedures.sql
-│   └── 05_analytics_queries.sql
-├── data/
-│   └── README.md
+│   ├── 02_staging_tables.sql
+│   ├── 03_oltp_tables.sql
+│   ├── 04_olap_tables.sql
+│   ├── 05_stored_procedures.sql
+│   └── 06_analytics_queries.sql
+│
+├── tests/
+│   └── test_synthesizer.py
+│
 ├── diagrams/
-│   ├── oltp_erd.drawio
-│   ├── olap_star_schema.drawio
-│   └── architecture.drawio
-├── docs/
-│   └── TEAM_WORKFLOW.md
-└── tests/
-    └── test_synthesizer.py
+│
+└── docs/
 ```
 
-## 1. Prerequisites
+------------------------------------------------------------------------
 
-Install:
+## Data Pipeline
 
-- Python 3.10+
-- MySQL Server 8.0+
-- MySQL Workbench (recommended)
-- Git
+The project follows a staged data engineering workflow:
 
-Create a virtual environment:
+### 1. Generate
 
-### Windows PowerShell
+Python creates the required synthetic population and related datasets.
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+### 2. Stage
+
+Generated CSV files are loaded into the MySQL staging database.
+
+### 3. Load OLTP
+
+Data is transformed into normalized operational tables.
+
+### 4. Transform
+
+The ETL layer prepares dimension and fact data for analytical workloads.
+
+### 5. Apply SCD Type 2
+
+Historical employee versions are preserved with validity dates and
+current-row indicators.
+
+### 6. Load Warehouse
+
+Data is loaded into the Star Schema.
+
+### 7. Analyze
+
+The Streamlit application queries the warehouse for executive analytics.
+
+------------------------------------------------------------------------
+
+## Data Synthesis
+
+The project is designed to generate **100,000+ employee records**
+together with related operational and historical data.
+
+Generated datasets include:
+
+-   Employees
+-   Departments
+-   Projects
+-   Assignments
+-   Performance Reviews
+-   Employee History
+
+The generated data maintains relationships between entities so that the
+resulting dataset can be loaded into the relational database and used
+for meaningful warehouse analytics.
+
+Example command:
+
+``` bash
+python scripts/generate_data.py --rows 100000
 ```
 
-### Windows CMD
+The generated files are written under:
 
-```cmd
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
+``` text
+data/generated/
 ```
 
-## 2. Configure MySQL
+------------------------------------------------------------------------
 
-Copy `.env.example` to `.env` and edit the values:
+## OLTP Database
 
-```text
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=your_mysql_password
-OLTP_DB=employee_oltp
-OLAP_DB=employee_dw
+The normalized operational database is stored in:
+
+``` text
+employee_oltp
 ```
 
-You can create the databases/tables with the SQL files below.
+Core operational entities include:
 
-## 3. Create database schemas
+-   `Employees`
+-   `Departments`
+-   `Projects`
+-   `Assignments`
+-   `Reviews`
 
-Open MySQL Workbench and run these files in order:
+The OLTP layer is responsible for transactional operations such as:
 
-```text
-sql/01_create_schemas.sql
-sql/02_staging_tables.sql
-sql/03_oltp_tables.sql
-sql/04_olap_tables.sql
+-   Employee onboarding
+-   Department changes
+-   Project creation
+-   Project assignments
+-   Performance review submission
+
+This separation prevents the operational model from becoming tightly
+coupled to analytical reporting.
+
+------------------------------------------------------------------------
+
+## Data Warehouse
+
+The analytical database is stored in:
+
+``` text
+employee_dw
+```
+
+The warehouse follows a **Star Schema**.
+
+### Dimensions
+
+#### Dim_Employee
+
+Contains employee descriptive attributes and historical versions.
+
+Important fields include:
+
+-   `employee_sk`
+-   `employee_id`
+-   employee attributes
+-   `department_sk`
+-   role
+-   salary
+-   `start_date`
+-   `end_date`
+-   `is_current`
+
+#### Dim_Department
+
+Contains department-level descriptive information.
+
+#### Dim_Project
+
+Contains project-level descriptive information.
+
+#### Dim_Date
+
+Provides date attributes used for time-based analysis.
+
+### Fact
+
+#### Fact_PerformanceReviews
+
+Stores performance review measurements and foreign keys to the warehouse
+dimensions.
+
+Measures include:
+
+-   Rating
+-   Review score
+-   Review count
+
+------------------------------------------------------------------------
+
+## SCD Type 2
+
+Employee history is implemented using **Slowly Changing Dimension Type
+2**.
+
+When a tracked employee attribute changes, the existing warehouse
+version is not overwritten.
+
+Instead:
+
+``` text
+Old Version
+    │
+    ├── is_current = FALSE
+    └── end_date = change date
+              │
+              ▼
+New Version
+    │
+    ├── new surrogate key
+    ├── start_date = change date
+    ├── end_date = 9999-12-31
+    └── is_current = TRUE
+```
+
+This allows historical questions such as:
+
+-   Which department did an employee belong to at a particular point in
+    time?
+-   Which employee version was valid when a performance review occurred?
+-   What changed between historical and current employee records?
+
+The Streamlit application can trigger department changes, and the
+warehouse maintains the historical versions.
+
+------------------------------------------------------------------------
+
+## ETL
+
+The primary ETL implementation is provided by:
+
+``` text
+src/etl.py
+```
+
+The pipeline loads:
+
+-   Dimensions
+-   Date dimension
+-   Historical employee versions
+-   Current employee versions
+-   Performance review facts
+
+The fact-loading logic matches reviews to the appropriate employee SCD
+Type 2 version based on the review date.
+
+### Full Warehouse Build
+
+``` bash
+python scripts/run_etl.py
+```
+
+The full ETL workflow can rebuild the warehouse from the generated
+source data.
+
+### Non-Destructive Warehouse Refresh
+
+The application also provides a synchronization path that refreshes the
+existing warehouse from OLTP without truncating the entire warehouse.
+
+This supports the workflow:
+
+``` text
+Streamlit Operation
+        │
+        ▼
+      OLTP
+        │
+        ▼
+Refresh Warehouse
+        │
+        ▼
+      OLAP
+        │
+        ▼
+Dashboard Analytics
+```
+
+------------------------------------------------------------------------
+
+## Advanced SQL
+
+The SQL layer demonstrates multiple advanced SQL techniques.
+
+### Common Table Expressions
+
+CTEs are used to structure multi-step analytical and transformation
+logic.
+
+### Window Functions
+
+Window functions are used for analytical ranking and transformation
+tasks, including patterns based on functions such as:
+
+``` sql
+ROW_NUMBER()
+DENSE_RANK()
+```
+
+### Stored Procedures
+
+Database procedures are included in:
+
+``` text
 sql/05_stored_procedures.sql
 ```
 
-`05_analytics_queries.sql` is for demonstrations and dashboard queries; it does not need to be run during setup.
+### Analytics Queries
 
-## 4. Generate the data
+Analytical queries are maintained in:
 
-The project works in two modes.
-
-### Mode A - Use the IBM HR Analytics dataset
-
-Download the IBM HR Analytics Employee Attrition & Performance CSV and place it at:
-
-```text
-data/WA_Fn-UseC_-HR-Employee-Attrition.csv
+``` text
+sql/06_analytics_queries.sql
 ```
 
-Then run:
+The analytical layer supports:
 
-```powershell
-python scripts/generate_data.py --rows 100000
+-   Performance trends
+-   Department performance
+-   Top employee analysis
+-   Project workload
+-   Workforce risk indicators
+-   Aggregated review metrics
+
+------------------------------------------------------------------------
+
+## Python Architecture
+
+The Python application follows a modular OOP structure.
+
+### Entities
+
+`src/entities.py`
+
+Defines the core application entities:
+
+-   Employee
+-   Project
+-   Review
+
+### Database Layer
+
+`src/db_manager.py`
+
+Provides centralized MySQL connection handling.
+
+### Managers / Data Access Layer
+
+`src/managers.py`
+
+Separates application operations from the Streamlit presentation layer.
+
+The manager layer handles operations such as:
+
+-   Employee operations
+-   Department changes
+-   Project operations
+-   Assignments
+-   Reviews
+-   Analytics queries
+
+### ETL Layer
+
+`src/etl.py`
+
+Encapsulates the warehouse loading and synchronization workflow.
+
+This separation provides clearer responsibilities and makes the
+application easier to maintain and test.
+
+------------------------------------------------------------------------
+
+## Streamlit Application
+
+The application is implemented in:
+
+``` text
+app.py
 ```
 
-The synthesizer reads the IBM snapshot, scales it with Faker-generated values and engineers historical records for a subset of employees.
+The application contains the following major areas.
 
-### Mode B - No IBM file yet
+### Dashboard
 
-The project also has a self-contained fallback seed generator. Simply run:
-
-```powershell
-python scripts/generate_data.py --rows 100000
-```
-
-If the IBM CSV is not present, the script creates a realistic seed internally and still generates the required 100,000+ row workload. This is useful for getting the application running before the team adds the official IBM dataset.
-
-Output files are created under `data/generated/`.
-
-## 5. Load the OLTP database
-
-Run:
-
-```powershell
-python scripts/load_oltp.py
-```
-
-The loader inserts departments, employees, projects, assignments and reviews in batches. It uses transactions and `executemany()` to avoid one SQL request per row.
-
-## 6. Run ETL into the warehouse
-
-Run:
-
-```powershell
-python scripts/run_etl.py
-```
-
-The ETL:
-
-1. Creates/refreshes date and dimension data.
-2. Loads employee history as SCD2 rows.
-3. Creates project and department dimensions.
-4. Loads performance-review facts.
-5. Uses SQL ranking/window logic for analytical transformations.
-
-## 7. Start Streamlit
-
-```powershell
-streamlit run app.py
-```
-
-Open the URL shown by Streamlit, normally:
-
-```text
-http://localhost:8501
-```
-
-## 8. What to test in the UI
+Provides executive-level analytics from the warehouse.
 
 ### Employee Management
 
-- Onboard a new employee.
-- Change an existing employee's department.
-- Verify the OLTP employee row changed.
-- Verify `employee_dw.Dim_Employee` now has an old `is_current = 0` version and a new `is_current = 1` version.
+Supports:
+
+-   Employee onboarding
+-   Employee listing
+-   Employee validation
+-   Department changes
+-   SCD Type 2-triggering department updates
 
 ### Projects
 
-- Create a project.
-- Assign an employee to a project.
+Supports:
 
-### Reviews
+-   Project creation
+-   Employee project assignment
+-   Assignment role management
 
-- Submit a performance review.
-- Run ETL again.
-- Refresh the dashboard.
+### Performance Reviews
 
-### Analytics
+Supports:
 
-The dashboard includes:
+-   Employee review submission
+-   Project selection
+-   Rating
+-   Performance score
+-   Review comments
 
-- KPI cards for employees, reviews, average rating and total review score.
-- Year-over-year average performance trends.
-- Top-performing employees by department using `DENSE_RANK()`.
-- Project workload/bottleneck analysis.
-- Department performance comparison.
+### System Information
 
-## 9. Important SCD Type 2 demonstration
+Provides application/database-related information.
 
-Suppose employee `E10001` is currently in Engineering.
+### Warehouse Refresh
 
-Before change:
+Allows operational changes to be synchronized from OLTP into the
+existing warehouse.
 
-```text
-employee_sk | employee_id | department | start_date | end_date   | is_current
-------------+-------------+------------+------------+------------+-----------
-1           | E10001      | Engineering| 2024-01-01 | 9999-12-31 | 1
+------------------------------------------------------------------------
+
+## Analytics Dashboard
+
+The dashboard reads analytical data from the **MySQL Star Schema
+warehouse**.
+
+Current analytical views include:
+
+### KPI Metrics
+
+-   Current employees
+-   Performance reviews
+-   Average performance score
+-   Total review score
+
+### Year-over-Year Performance
+
+Shows average performance score by year.
+
+### Department Performance
+
+Compares performance across departments.
+
+### Top Employees
+
+Provides top-performing employee analysis by department.
+
+### Project Workload
+
+Shows review/employee workload by project.
+
+### Attrition Risk Proxy
+
+Provides a transparent analytical risk indicator derived from warehouse
+data.
+
+> **Important:** The current attrition feature is a proxy/analytical
+> indicator and is **not a trained predictive machine-learning model**.
+
+------------------------------------------------------------------------
+
+## Cloud Deployment
+
+The current deployment architecture uses:
+
+### Application
+
+**Streamlit Community Cloud**
+
+### Database
+
+**Aiven MySQL 8.4**
+
+The cloud database contains the project schemas:
+
+``` text
+employee_staging
+employee_oltp
+employee_dw
 ```
 
-After the Streamlit department update to Finance:
+The application connects to Aiven MySQL using SSL.
 
-```text
-employee_sk | employee_id | department | start_date | end_date   | is_current
-------------+-------------+------------+------------+------------+-----------
-1           | E10001      | Engineering| 2024-01-01 | 2026-10-02 | 0
-2           | E10001      | Finance    | 2026-10-03 | 9999-12-31 | 1
+Database credentials and sensitive configuration are kept outside the
+source code and repository.
+
+------------------------------------------------------------------------
+
+## Installation and Setup
+
+### 1. Clone the Repository
+
+``` bash
+git clone <repository-url>
+cd enterprise_employee_analytics
 ```
 
-The exact dates depend on the day the change is performed.
+### 2. Create a Virtual Environment
 
-## 10. Git team workflow
+Windows:
 
-Use three feature branches:
-
-```text
-feature/person1-data-oltp
-feature/person2-warehouse-etl
-feature/person3-oop-streamlit
+``` bash
+python -m venv .venv
+.venv\Scripts\activate
 ```
 
-Each person commits only their logical module. Push the feature branch and create a Pull Request into `main`.
+macOS / Linux:
 
-See `docs/TEAM_WORKFLOW.md` for the detailed split.
+``` bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
 
-## 11. Cloud deployment
+### 3. Install Dependencies
 
-The application is designed for Streamlit Community Cloud. For deployment:
-
-1. Push the repository to GitHub.
-2. Add the application entry point `app.py`.
-3. Add `requirements.txt`.
-4. Configure secure database secrets in Streamlit's secrets/settings rather than committing `.env`.
-5. Make the MySQL server reachable from the cloud environment.
-
-For a classroom/demo deployment, a cloud-hosted MySQL-compatible database is recommended. Do not expose a local MySQL server directly to the public internet.
-
-## 12. Troubleshooting
-
-### `ModuleNotFoundError`
-
-Activate the virtual environment and run:
-
-```powershell
+``` bash
 pip install -r requirements.txt
 ```
 
-### MySQL connection refused
+### 4. Configure Environment Variables
 
-Check that MySQL Server is running and that `.env` has the correct host, port, username and password.
+Create a `.env` file from `.env.example`.
 
-### Access denied for MySQL user
+Example structure:
 
-Verify the password and privileges in MySQL Workbench.
+``` env
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=your_password
 
-### Streamlit starts but dashboard is empty
+STAGING_DB=employee_staging
+OLTP_DB=employee_oltp
+OLAP_DB=employee_dw
 
-Run, in order:
+DB_SSL_CA=
+DB_SSL_VERIFY_CERT=false
+DB_SSL_VERIFY_IDENTITY=false
+```
 
-```powershell
+For cloud deployment, use the corresponding Aiven connection values and
+configure secrets through the deployment platform.
+
+------------------------------------------------------------------------
+
+## Database Setup
+
+Execute the SQL scripts in the following order:
+
+``` text
+01_create_schemas.sql
+02_staging_tables.sql
+03_oltp_tables.sql
+04_olap_tables.sql
+05_stored_procedures.sql
+06_analytics_queries.sql
+```
+
+The schema creation order is important because later tables and
+procedures depend on the database structures created earlier.
+
+------------------------------------------------------------------------
+
+## Running the Project
+
+### Generate Data
+
+``` bash
 python scripts/generate_data.py --rows 100000
+```
+
+### Load OLTP
+
+``` bash
 python scripts/load_oltp.py
+```
+
+### Run ETL
+
+``` bash
 python scripts/run_etl.py
+```
+
+### Start Streamlit
+
+``` bash
 streamlit run app.py
 ```
 
-### Need a clean rebuild
+The application will normally be available at:
 
-Drop the two project schemas in MySQL and rerun the four SQL setup files, then rerun the data load and ETL.
+``` text
+http://localhost:8501
+```
 
-## 13. Evaluation checklist
+------------------------------------------------------------------------
 
-- [x] 100K+ data synthesizer
-- [x] Faker + pandas
-- [x] Historical SCD2 data
-- [x] Normalized OLTP model
-- [x] Star Schema OLAP model
-- [x] Dimension surrogate keys
-- [x] SCD Type 2
-- [x] Stored Procedures
-- [x] CTEs
-- [x] Window Functions / DENSE_RANK
-- [x] Singleton DB connection
-- [x] OOP entity classes
-- [x] DAL/manager classes
-- [x] Error handling
-- [x] Streamlit forms
-- [x] Plotly analytics
-- [x] Git workflow documentation
-- [x] Editable Draw.io diagrams
+## Warehouse Refresh
 
-## Source alignment
+After performing an operational change through the Streamlit
+application, use:
 
-This implementation follows the requested mini-project structure and terminology: IBM HR Analytics source, 100,000+ synthesis, normalized OLTP tables, Fact_PerformanceReviews, Dim_Employee/Project/Date/Department, SCD Type 2, advanced SQL, Python OOP, Streamlit, GitHub and Streamlit Community Cloud.
+``` text
+Dashboard → Refresh Warehouse
+```
 
-## Important: realistic demo data
+The application synchronizes operational changes into the warehouse
+without requiring a complete warehouse rebuild.
 
-The synthesizer intentionally creates meaningful variation across departments, roles, years, and project workloads. It generates multiple performance reviews per employee where possible, weighted project assignments, and 10% historical employee versions for SCD Type 2. After changing the generator, regenerate the CSVs, reload staging/OLTP, and rerun the ETL before opening the dashboard.
+This is useful for workflows such as:
 
-The dashboard also includes an **Employee Attrition Risk — Analytical Proxy**. It is a transparent demonstration score derived from warehouse signals; it is not a machine-learning prediction model.
+``` text
+Onboard Employee
+       ↓
+OLTP
+       ↓
+Refresh Warehouse
+       ↓
+OLAP
+       ↓
+Dashboard
+```
 
+------------------------------------------------------------------------
+
+## Security
+
+Sensitive information must never be committed to GitHub.
+
+The following should remain local or be managed through secure
+deployment secrets:
+
+``` text
+.env
+database passwords
+SSL certificates
+private credentials
+virtual environments
+```
+
+The repository should contain configuration templates such as:
+
+``` text
+.env.example
+```
+
+but not actual credentials.
+
+For Streamlit Cloud deployment, database credentials should be stored
+using the application's secrets configuration.
+
+------------------------------------------------------------------------
+
+## Validation and Error Handling
+
+The application includes validation for operational workflows.
+
+Examples include:
+
+-   Employee ID existence checks
+-   Age validation
+-   Role validation
+-   Required-field validation
+-   Numeric validation for appropriate fields
+-   Transactional error handling
+-   User-facing Streamlit error messages
+
+The application also separates business/data-access logic from the
+presentation layer, making operational failures easier to handle without
+exposing raw database implementation details to users.
+
+------------------------------------------------------------------------
+
+## Performance and Scalability
+
+The project is designed around a separation of workloads:
+
+``` text
+OLTP
+↓
+Transactional operations
+
+OLAP / Data Warehouse
+↓
+Analytical queries
+```
+
+This avoids using the transactional model directly for every analytical
+query.
+
+The system also avoids unnecessarily loading the complete 100K+ employee
+population into interactive UI controls for operations such as employee
+assignments and reviews. Employee IDs can be validated directly against
+the database.
+
+For warehouse synchronization, the project includes a non-destructive
+refresh path rather than rebuilding the complete warehouse for every
+application interaction.
+
+------------------------------------------------------------------------
+
+## Project Workflow
+
+A typical end-to-end workflow is:
+
+``` text
+1. Generate synthetic data
+          ↓
+2. Load staging database
+          ↓
+3. Load normalized OLTP
+          ↓
+4. Run ETL
+          ↓
+5. Build / refresh Star Schema
+          ↓
+6. Open Streamlit application
+          ↓
+7. Perform HR operations
+          ↓
+8. Refresh warehouse
+          ↓
+9. Analyze updated warehouse data
+```
+
+------------------------------------------------------------------------
+
+## Future Enhancements
+
+Potential future improvements include:
+
+-   ML-based employee attrition prediction
+-   More advanced workforce forecasting
+-   Incremental ETL based on change tracking
+-   Additional executive KPIs
+-   More interactive dashboard filtering
+-   Automated data-quality monitoring
+-   Role-based authentication
+-   Scheduled warehouse refresh
+-   Expanded cloud observability
+-   More advanced historical employee analytics
+
+------------------------------------------------------------------------
+
+## License
+
+This project is intended for educational, demonstration, and portfolio
+purposes.
