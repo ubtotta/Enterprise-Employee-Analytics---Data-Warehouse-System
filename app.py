@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import streamlit as st
 
-from ui.header import top_bar
+from ui import auth
+from ui.header import top_bar, welcome_overlay
 from ui.theme import apply_theme, run_interactions
-from views import employees, overview, projects, reviews, system
+from views import employees, login, overview, projects, reviews, system
 
 st.set_page_config(
     page_title="Employee Analytics",
@@ -20,6 +21,11 @@ st.set_page_config(
 )
 apply_theme()
 
+# Signing out: fade, clear the cookie and load the sign-in screen fresh (nothing else renders).
+if st.session_state.get("_auth_leaving"):
+    st.html(auth.leave_script(), unsafe_allow_javascript=True)
+    st.stop()
+
 pages = [
     st.Page(overview.render, title="Overview", url_path="overview", default=True),
     st.Page(employees.render, title="Employees", url_path="employees"),
@@ -27,7 +33,15 @@ pages = [
     st.Page(reviews.render, title="Reviews", url_path="reviews"),
     st.Page(system.render, title="System", url_path="system"),
 ]
-current = st.navigation(pages, position="hidden")
-top_bar(pages, current)
+current = st.navigation(pages, position="hidden")  # resolved first so a deep link survives sign-in
+
+# Sign-in gate: nothing below runs until someone has signed in.
+user = auth.current_user()
+if user is None:
+    login.render()
+    st.stop()
+
+top_bar(pages, current, user)
+welcome_overlay(user)
 current.run()
 run_interactions()

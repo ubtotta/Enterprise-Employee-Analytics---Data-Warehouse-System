@@ -18,6 +18,7 @@ from ui.components import (Col, callout, card_head, chip, count_html, data_table
                            leader_list, micro_bars, micro_spark, micro_split, mix_bar, pager, paginate,
                            reset_page, section, skeleton)
 from ui.theme import PLOTLY_CONFIG, style_figure, tokens
+from ui import auth
 from ui.errors import log_error, show_unavailable
 
 
@@ -208,7 +209,9 @@ def _viewer_now() -> datetime:
 
 def _greeting(now: datetime) -> str:
     part = "morning" if now.hour < 12 else ("afternoon" if now.hour < 17 else "evening")
-    return f"Good {part}. It is {now.strftime('%A')}, {now.day} {now.strftime('%B %Y')}."
+    user = auth.current_user()
+    who = f", {user.first_name}" if user else ""
+    return f"Good {part}{who}. It is {now.strftime('%A')}, {now.day} {now.strftime('%B %Y')}."
 
 
 def render():

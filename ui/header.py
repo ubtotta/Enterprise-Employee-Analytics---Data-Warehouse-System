@@ -6,6 +6,7 @@ session_state keys. It now lives in the top bar so it is reachable from any page
 """
 from __future__ import annotations
 
+from html import escape
 from pathlib import Path
 
 import streamlit as st
@@ -13,6 +14,7 @@ import streamlit as st
 from src.etl import EmployeeWarehouseETL
 from ui import data
 from ui.errors import safe_text
+from ui import auth
 from ui.components import brand_html
 from ui.theme import theme_switch_html
 
@@ -92,7 +94,77 @@ def refresh_feedback():
         st.error("Warehouse refresh failed: " + st.session_state["warehouse_refresh_error"], icon=":material/error:")
 
 
-def top_bar(pages: list, current) -> None:
+PROFILE_STYLE = """
+<style>
+/* profile avatar in the top bar opens a small account card */
+div[class*="st-key-profile-menu"] [data-testid="stPopover"] button {
+  width: 42px; height: 42px; min-height: 42px; padding: 0; border-radius: 999px; justify-content: center;
+  background: var(--accent-soft) !important; border: 1px solid var(--accent-ring) !important;
+  transition: transform 160ms var(--ease-out), box-shadow 200ms var(--ease-out); }
+div[class*="st-key-profile-menu"] [data-testid="stPopover"] button:hover {
+  transform: translateY(-1px); box-shadow: 0 0 0 4px var(--accent-ring); }
+div[class*="st-key-profile-menu"] [data-testid="stPopover"] button p {
+  color: var(--accent-text) !important; font-weight: 700; font-size: .86rem; letter-spacing: .02em; }
+div[class*="st-key-profile-menu"] [data-testid="stPopover"] button [data-testid="stIconMaterial"],
+div[class*="st-key-profile-menu"] [data-testid="stPopover"] button svg { display: none; }
+.ea-me { display: flex; align-items: center; gap: 12px; padding: 4px 2px 12px; min-width: 230px; }
+.ea-me .av { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; flex: 0 0 46px;
+  font-weight: 700; color: var(--accent-text); background: var(--accent-soft); }
+.ea-me b { display: block; font-weight: 600; color: var(--ink); }
+.ea-me small { color: var(--ink-3); }
+.ea-me-meta { display: flex; align-items: center; gap: 6px; color: var(--ink-3); font-size: .8rem;
+  padding: 10px 2px; border-top: 1px solid var(--hairline); margin-bottom: 6px; }
+.ea-me-meta .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+
+/* welcome overlay after sign-in: appears, holds, then dissolves into the dashboard */
+.ea-welcome { position: fixed; inset: 0; z-index: 9998; display: grid; place-items: center; pointer-events: none;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  animation: ea-welcome-out 600ms 1500ms cubic-bezier(.4,0,.2,1) forwards; }
+.ea-welcome .in { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
+.ea-welcome .av { width: 84px; height: 84px; border-radius: 50%; display: grid; place-items: center; font-size: 1.7rem;
+  font-weight: 700; color: var(--accent-text); background: var(--accent-soft); box-shadow: 0 0 0 8px var(--accent-ring);
+  animation: ea-w-pop 560ms cubic-bezier(.2,1.4,.4,1) both; }
+.ea-welcome b { font-size: 2rem; font-weight: 650; letter-spacing: -.03em; color: var(--ink);
+  animation: ea-w-rise 520ms 120ms cubic-bezier(.2,.8,.2,1) both; }
+.ea-welcome span { color: var(--ink-3); animation: ea-w-rise 520ms 220ms cubic-bezier(.2,.8,.2,1) both; }
+@keyframes ea-w-pop { from { opacity: 0; transform: scale(.6); } }
+@keyframes ea-w-rise { from { opacity: 0; transform: translateY(10px); } }
+@keyframes ea-welcome-out { to { opacity: 0; visibility: hidden; -webkit-backdrop-filter: blur(0); backdrop-filter: blur(0); } }
+@media (prefers-reduced-motion: reduce) { .ea-welcome { animation-duration: 1ms; animation-delay: 1200ms; } }
+</style>
+"""
+
+
+def _sign_out() -> None:
+    auth.sign_out()
+
+
+def welcome_overlay(user) -> None:
+    """Shown once, right after sign-in."""
+    if st.query_params.get("welcome") == "1":
+        del st.query_params["welcome"]  # once only; a reload will not show it again
+        from datetime import datetime
+        st.html(f'<div class="ea-welcome" role="status"><div class="in"><div class="av">{escape(user.initials)}</div>'
+                f"<b>Welcome, {escape(user.first_name)}</b>"
+                f"<span>{datetime.now().strftime('%A, %d %B')}</span></div></div>")
+
+
+def _profile_menu(user) -> None:
+    signed_in = st.session_state.get("_auth_signed_in_at")
+    since = (f"Signed in at {__import__('datetime').datetime.fromtimestamp(signed_in).strftime('%H:%M')}"
+             if signed_in else "Signed in")
+    with st.container(key="profile-menu", width="content"):
+        with st.popover(user.initials):
+            st.html(f'<div class="ea-me"><div class="av">{escape(user.initials)}</div>'
+                    f"<div><b>{escape(user.full_name)}</b><small>@{escape(user.username)}</small></div></div>"
+                    f'<div class="ea-me-meta"><span class="dot"></span>{since}</div>')
+            st.button("Sign out", icon=":material/logout:", key="sign_out", on_click=_sign_out,
+                      use_container_width=True)
+
+
+def top_bar(pages: list, current, user=None) -> None:
+    st.html(PROFILE_STYLE)
     with st.container(key="topbar"):
         c_brand, c_nav, c_actions = st.columns([1.25, 3.2, 1.25], vertical_alignment="center", gap="small")
         with c_brand:
@@ -110,6 +182,8 @@ def top_bar(pages: list, current) -> None:
                 with st.container(key="iconbtn-refresh", width="content"):
                     refresh_clicked = st.button("Refresh warehouse", icon=":material/sync:", key="refresh_warehouse")
                 st.html(theme_switch_html(), unsafe_allow_javascript=True, width="content")
+                if user is not None:
+                    _profile_menu(user)
         # The refresh runs here, outside the button row, so its loading state cannot push the
         # buttons around. The slot is zero-size; the status pill hangs below the bar.
         if refresh_clicked:
