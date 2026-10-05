@@ -650,7 +650,17 @@ THEME_SWITCH_JS = """
   const sw = document.querySelector('.ea-theme');
   if (!sw || sw.dataset.bound) return;
   sw.dataset.bound = '1';
-  const paths = %PATHS%;
+  const slugs = %SLUGS%;
+  // Streamlit keeps the theme per page path (stActiveTheme-PATH-v2). On Streamlit Community
+  // Cloud every path has an extra prefix (for example "/~/+/"), so the keys are built from the
+  // current path's base rather than from fixed paths.
+  function themeKeys() {
+    const path = window.location.pathname;
+    let base = path;
+    for (const s of slugs) { if (path.endsWith('/' + s)) { base = path.slice(0, -s.length); break; } }
+    if (!base.endsWith('/')) base += '/';
+    return new Set([path, base, (base.length > 1 ? base.slice(0, -1) : base)].concat(slugs.map(s => base + s)));
+  }
   sw.querySelectorAll('button[data-set]').forEach(btn => {
     btn.addEventListener('click', () => {
       const target = btn.dataset.set;
@@ -658,9 +668,12 @@ THEME_SWITCH_JS = """
       sw.dataset.mode = target;
       sw.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.set === target)));
       const value = JSON.stringify(target === 'dark' ? 'Dark' : 'Light');
-      new Set(paths.concat([window.location.pathname])).forEach(p => {
+      themeKeys().forEach(p => {
         try { localStorage.setItem('stActiveTheme-' + p + '-v2', value); } catch (e) {}
       });
+      // Signed in: ask the server for a one-time pass, it reloads and keeps the session.
+      const handoff = sw.dataset.handoff === '1' && document.querySelector('div[class*="st-key-themego"] button');
+      if (handoff) { setTimeout(() => handoff.click(), 200); return; }
       setTimeout(() => {
         const fade = document.createElement('div'); fade.className = 'ea-fade'; document.body.appendChild(fade);
         requestAnimationFrame(() => fade.classList.add('on'));
@@ -734,15 +747,16 @@ INTERACTIONS_JS = """
 """
 
 
-def theme_switch_html() -> str:
+def theme_switch_html(handoff: bool = False) -> str:
+    """Light/dark switch. handoff=True (signed in): the reload carries a one-time sign-in pass."""
     m = mode()
     def btn(target: str, icon: str, label: str) -> str:
         return (f'<button type="button" data-set="{target}" aria-pressed="{str(m == target).lower()}" '
                 f'aria-label="{label}" title="{label}"><span class="ea-icon" style="font-size:18px">{icon}</span></button>')
-    return (f'<div class="ea-theme" data-mode="{m}" role="group" aria-label="Colour theme">'
+    return (f'<div class="ea-theme" data-mode="{m}" data-handoff="{int(handoff)}" role="group" aria-label="Colour theme">'
             f'<span class="ea-knob"></span>{btn("light", "light_mode", "Light theme")}'
             f'{btn("dark", "dark_mode", "Dark theme")}</div>'
-            + THEME_SWITCH_JS.replace("%PATHS%", json.dumps(PAGE_PATHS)))
+            + THEME_SWITCH_JS.replace("%SLUGS%", json.dumps([p.strip("/") for p in PAGE_PATHS if p != "/"])))
 
 
 def run_interactions() -> None:

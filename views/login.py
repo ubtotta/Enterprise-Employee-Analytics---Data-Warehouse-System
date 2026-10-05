@@ -9,6 +9,7 @@ dashboard opens.
 """
 from __future__ import annotations
 
+import time
 from datetime import datetime
 from html import escape
 
@@ -188,6 +189,15 @@ def _greeting() -> str:
 
 
 def render() -> None:
+    # The whole sign-in screen lives in one placeholder. After a successful sign-in it is
+    # emptied before the rerun, so no piece of this screen can be left behind (and reused
+    # by Streamlit) inside the dashboard while the dashboard's data is still loading.
+    root = st.empty()
+    with root.container():
+        _screen(root)
+
+
+def _screen(root) -> None:
     st.html(STYLE)
 
     with st.container(key="login-shell"):
@@ -201,11 +211,11 @@ def render() -> None:
                     st.html(theme_switch_html(), unsafe_allow_javascript=True, width="content")
                 body = st.empty()
                 with body.container():
-                    _form(body)
+                    _form(body, root)
     st.html(SCRIPT, unsafe_allow_javascript=True)
 
 
-def _form(body) -> None:
+def _form(body, root) -> None:
     signed_out = st.query_params.get("signed_out") == "1"
     if signed_out:
         del st.query_params["signed_out"]  # show the note once
@@ -240,25 +250,18 @@ def _form(body) -> None:
                 _message(f"Too many attempts. Please wait {wait} seconds and try again." if wait
                          else "Username or password is incorrect.", shake=True)
             else:
-              # Store authenticated user in Streamlit Session State
-              st.session_state["_auth_username"] = user.username
-              st.session_state["_auth_signed_in_at"] = int(datetime.now().timestamp())
+                # Signed in: session state is the primary state for this browser session,
+                # and the signed cookie (written by the dashboard) restores it after a reload.
+                st.session_state["_auth_username"] = user.username
+                st.session_state["_auth_signed_in_at"] = int(datetime.now().timestamp())
+                auth.queue_session_cookie(user, remember)
+                st.query_params["welcome"] = "1"  # the welcome overlay in ui/header.py
 
-              # Trigger the existing welcome transition in ui/header.py.
-              # This covers the previous login screen while the dashboard renders.
-              st.query_params["welcome"] = "1"
-
-              body.html(
-                  f"""
-                  <div class="ea-login-ok">
-                      <div class="av">{escape(user.initials)}</div>
-                      <b>Welcome, {escape(user.first_name)}</b>
-                      <span>Opening your dashboard</span>
-                  </div>
-                  """
-              )
-              st.query_params["welcome"] = "1"
-              st.rerun()
+                body.html(f'<div class="ea-login-ok"><div class="av">{escape(user.initials)}</div>'
+                          f"<b>Welcome, {escape(user.first_name)}</b><span>Opening your dashboard</span></div>")
+                time.sleep(0.6)  # let the welcome card show before switching screens
+                root.empty()     # remove the whole sign-in screen first (see render())
+                st.rerun()
     st.html('<p class="ea-login-foot">Trouble signing in? Contact your administrator.</p>')
 
 
