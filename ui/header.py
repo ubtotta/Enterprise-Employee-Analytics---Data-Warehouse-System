@@ -116,6 +116,10 @@ div[class*="st-key-profile-menu"] [data-testid="stPopover"] button svg { display
   padding: 10px 2px; border-top: 1px solid var(--hairline); margin-bottom: 6px; }
 .ea-me-meta .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
 
+/* safety net: pieces of the sign-in screen must never show inside the dashboard */
+div[class*="st-key-login"], div[class*="st-key-topbar"] [data-testid="stForm"],
+.ea-login-ok, .ea-login-foot, .ea-art { display: none !important; }
+
 /* welcome overlay after sign-in: appears, holds, then dissolves into the dashboard */
 .ea-welcome { position: fixed; inset: 0; z-index: 9998; display: grid; place-items: center; pointer-events: none;
   background: color-mix(in srgb, var(--bg) 82%, transparent);
