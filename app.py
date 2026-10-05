@@ -41,6 +41,10 @@ if user is None:
     login.render()
     st.stop()
 
+cookie_js = auth.take_session_cookie_script()  # right after sign-in: store the signed cookie
+if cookie_js:
+    st.html(cookie_js, unsafe_allow_javascript=True)
+
 top_bar(pages, current, user)
 welcome_overlay(user)
 current.run()

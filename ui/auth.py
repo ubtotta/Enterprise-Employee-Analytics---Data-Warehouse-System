@@ -64,7 +64,23 @@ USERS = {
 }
 
 # One secret per server process unless EA_AUTH_SECRET is set.
-_SECRET = (os.environ.get("EA_AUTH_SECRET") or secrets.token_hex(32)).encode()
+def _load_secret() -> bytes:
+    """Signing key: EA_AUTH_SECRET from the environment or Streamlit secrets (set it on
+    Streamlit Community Cloud so sessions survive app restarts), else a random key per start."""
+    value = os.environ.get("EA_AUTH_SECRET")
+    if not value:
+        try:
+            value = st.secrets.get("EA_AUTH_SECRET")
+        except Exception:  # no secrets file locally
+            value = None
+    return (value or secrets.token_hex(32)).encode()
+
+
+_SECRET = _load_secret()
+_RESUME_KEY = hmac.new(_SECRET, b"ea-resume", hashlib.sha256).digest()
+RESUME_PARAM = "ea_resume"
+RESUME_SECONDS = 60
+_used_resume: dict[str, float] = {}  # one-time passes already used (pass -> expiry)
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +117,37 @@ def read_token(token: str | None, now: float | None = None, secret: bytes = _SEC
         return None
 
 
+def make_resume_token(username: str, now: float | None = None, key: bytes | None = None) -> str:
+    """One-time pass that carries a signed-in session across a page reload (theme switch).
+
+    It works without cookies, which matters on Streamlit Community Cloud where the app runs
+    inside a frame and browsers may block cookies there. Valid for 60 seconds, used once.
+    """
+    key = key or _RESUME_KEY
+    expires = int((now or time.time()) + RESUME_SECONDS)
+    nonce = secrets.token_hex(8)
+    body = f"{username}.{expires}.{nonce}"
+    return f"{body}.{hmac.new(key, body.encode(), hashlib.sha256).hexdigest()}"
+
+
+def use_resume_token(token: str | None, now: float | None = None, key: bytes | None = None) -> User | None:
+    """The user for a valid, unexpired, unused pass (and mark it used), else None."""
+    key = key or _RESUME_KEY
+    now = now or time.time()
+    try:
+        username, expires, nonce, sig = (token or "").split(".")
+        good = hmac.new(key, f"{username}.{expires}.{nonce}".encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, good) or int(expires) < now or token in _used_resume:
+            return None
+    except (ValueError, AttributeError):
+        return None
+    for t, exp in list(_used_resume.items()):  # forget passes that have expired anyway
+        if exp < now:
+            _used_resume.pop(t, None)
+    _used_resume[token] = int(expires)
+    return USERS.get(username)
+
+
 # ---------------------------------------------------------------------------
 # Session helpers
 # ---------------------------------------------------------------------------
@@ -113,6 +160,18 @@ def current_user() -> User | None:
 
     if st.session_state.get("_auth_leaving"):
         return None
+
+    # ---------------------------------------------------------
+    # Coming back from a theme switch: one-time pass in the URL
+    # ---------------------------------------------------------
+    token = st.query_params.get(RESUME_PARAM)
+    if token:
+        del st.query_params[RESUME_PARAM]  # never leave it in the address bar
+        resumed = use_resume_token(token)
+        if resumed:
+            st.session_state["_auth_username"] = resumed.username
+            st.session_state.setdefault("_auth_signed_in_at", int(time.time()))
+            return resumed
 
     # ---------------------------------------------------------
     # Primary authentication state
@@ -178,6 +237,35 @@ def enter_script(user: User, remember: bool, delay_ms: int = 900) -> str:
             "setTimeout(function(){var u=new URL(window.location.href);u.searchParams.set('welcome','1');"
             f"window.location.replace(u.toString());}},{delay_ms});"
             "})();</script>")
+
+
+def queue_session_cookie(user: User, remember: bool) -> None:
+    """Remember the signed cookie for the browser; it is written once the dashboard has rendered.
+
+    Session state keeps the user signed in within this browser session. The cookie is what
+    restores the session after a page reload (for example the theme switch, which reloads).
+    """
+    expires = int(time.time() + SESSION_HOURS * 3600)
+    age = f"; Max-Age={SESSION_HOURS * 3600}" if remember else ""
+    cookie = json.dumps(f"{COOKIE}={make_token(user.username, expires)}")
+    st.session_state["_auth_cookie_js"] = (
+        f"<script>document.cookie={cookie}+'{age}; Path=/; SameSite=Strict';</script>")
+
+
+def take_session_cookie_script() -> str:
+    """The pending cookie script (empty if none); returned once."""
+    return st.session_state.pop("_auth_cookie_js", "")
+
+
+def theme_reload_script(user: User) -> str:
+    """Reload the page (so Streamlit applies the new theme) carrying a one-time pass,
+    so the person stays signed in even where cookies are blocked."""
+    token = json.dumps(make_resume_token(user.username))
+    return ("<script>(function(){var f=document.createElement('div');f.className='ea-fade';"
+            "document.body.appendChild(f);requestAnimationFrame(function(){f.classList.add('on');});"
+            "var u=new URL(window.location.href);"
+            f"u.searchParams.set({json.dumps(RESUME_PARAM)},{token});"
+            "setTimeout(function(){window.location.replace(u.toString());},260);})();</script>")
 
 
 def sign_out() -> None:

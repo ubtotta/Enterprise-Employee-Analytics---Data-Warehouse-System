@@ -116,6 +116,8 @@ div[class*="st-key-profile-menu"] [data-testid="stPopover"] button svg { display
   padding: 10px 2px; border-top: 1px solid var(--hairline); margin-bottom: 6px; }
 .ea-me-meta .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
 
+div[class*="st-key-themego"] { display: none !important; }
+
 /* safety net: pieces of the sign-in screen must never show inside the dashboard */
 div[class*="st-key-login"], div[class*="st-key-topbar"] [data-testid="stForm"],
 .ea-login-ok, .ea-login-foot, .ea-art { display: none !important; }
@@ -185,9 +187,15 @@ def top_bar(pages: list, current, user=None) -> None:
                               key="actions", gap="small"):
                 with st.container(key="iconbtn-refresh", width="content"):
                     refresh_clicked = st.button("Refresh warehouse", icon=":material/sync:", key="refresh_warehouse")
-                st.html(theme_switch_html(), unsafe_allow_javascript=True, width="content")
+                st.html(theme_switch_html(handoff=user is not None), unsafe_allow_javascript=True,
+                        width="content")
                 if user is not None:
                     _profile_menu(user)
+                    # Hidden trigger for the theme switch: the server issues a one-time pass and
+                    # reloads, so the person stays signed in (works without cookies, e.g. on Cloud).
+                    with st.container(key="themego", width="content"):
+                        if st.button("Apply theme", key="themego_btn"):
+                            st.html(auth.theme_reload_script(user), unsafe_allow_javascript=True)
         # The refresh runs here, outside the button row, so its loading state cannot push the
         # buttons around. The slot is zero-size; the status pill hangs below the bar.
         if refresh_clicked:

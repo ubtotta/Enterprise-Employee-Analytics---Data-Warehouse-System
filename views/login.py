@@ -250,9 +250,11 @@ def _form(body, root) -> None:
                 _message(f"Too many attempts. Please wait {wait} seconds and try again." if wait
                          else "Username or password is incorrect.", shake=True)
             else:
-                # Signed in: keep the user in session state for this browser session.
+                # Signed in: session state is the primary state for this browser session,
+                # and the signed cookie (written by the dashboard) restores it after a reload.
                 st.session_state["_auth_username"] = user.username
                 st.session_state["_auth_signed_in_at"] = int(datetime.now().timestamp())
+                auth.queue_session_cookie(user, remember)
                 st.query_params["welcome"] = "1"  # the welcome overlay in ui/header.py
 
                 body.html(f'<div class="ea-login-ok"><div class="av">{escape(user.initials)}</div>'
